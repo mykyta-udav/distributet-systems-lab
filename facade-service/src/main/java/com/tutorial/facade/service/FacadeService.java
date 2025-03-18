@@ -1,5 +1,7 @@
 package com.tutorial.facade.service;
 
+import com.tutorial.facade.grpc.LogRequest;
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -18,42 +20,38 @@ import java.util.UUID;
 public class FacadeService {
 
     private final RestTemplate restTemplate;
-    public static final String LOGGING = "http://localhost:8081";
+    private final GrpcLoggingService grpcLoggingService;
     private static final String MESSAGES_SERVICE_URL = "http://localhost:8080/messages";
+    private static final String LOGGING = "http://localhost:8081/messages";
 
-    public FacadeService(RestTemplate restTemplate) {
+    public FacadeService(RestTemplate restTemplate, GrpcLoggingService grpcLoggingService) {
         this.restTemplate = restTemplate;
+        this.grpcLoggingService = grpcLoggingService;
     }
 
     @PostMapping("/message")
+    @CircuitBreaker(name = "logging-service", fallbackMethod = "handleMessageFallback")
     public ResponseEntity<UUID> handleMessage(@RequestBody String message) {
         UUID messageId = UUID.randomUUID();
 
-        LogMessage logMessage = new LogMessage(messageId, message);
-        restTemplate.postForEntity(LOGGING + "/log", logMessage, Void.class);
+        LogRequest logRequest = LogRequest.newBuilder()
+                .setId(messageId.toString())
+                .setMessage(message)
+                .build();
 
+        grpcLoggingService.log(logRequest);
         return ResponseEntity.ok(messageId);
+    }
+
+    public ResponseEntity<UUID> handleMessageFallback(String message, Exception ex) {
+        log.error("Circuit Breaker відкритий. Помилка при спробі логування повідомлення: {}", ex.getMessage());
+        return ResponseEntity.ok(UUID.randomUUID());
     }
 
     @GetMapping("/messages")
     public String getAllMessages() {
-        // Отримуємо дані з обох сервісів
-        log.info("FacadeService.getAllMessages");
-        String loggingMessages = restTemplate.getForObject(LOGGING + "/messages", String.class);
-        log.info("FacadeService.getAllMessages: loggingMessages = {}", loggingMessages);
+        String loggingMessages = restTemplate.getForObject(LOGGING, String.class);
         String staticMessage = restTemplate.getForObject(MESSAGES_SERVICE_URL, String.class);
-        log.info("FacadeService.getAllMessages: staticMessage = {}", staticMessage);
-
-        // Конкатенуємо результати
         return loggingMessages + "\n" + staticMessage;
     }
-
-}
-
-@Data
-@AllArgsConstructor
-@NoArgsConstructor
-class LogMessage {
-    private UUID id;
-    private String message;
 }

@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+option java_multiple_files = true;
+option java_package = "com.tutorial.facade.grpc";
+
+// Сервіс для логування
+service LoggingService {
+  rpc Log(LogRequest) returns (LogResponse);
+}
+
+// Запит для логування
+message LogRequest {
+  string id = 1;
+  string message = 2;
+}
+
+// Відповідь від сервісу логування
+message LogResponse {
+  bool success = 1;
+} 
