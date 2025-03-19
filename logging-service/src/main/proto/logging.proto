@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+option java_multiple_files = true;
+option java_package = "com.tutorial.logging";
+
+message LogRequest {
+  string id = 1;
+  string message = 2;
+}
+
+message LogResponse {
+  bool success = 1;
+}
+
+service LoggingService {
+  rpc Log(LogRequest) returns (LogResponse);
+} 
