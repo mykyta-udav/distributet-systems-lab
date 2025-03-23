@@ -4,23 +4,19 @@ import com.tutorial.facade.grpc.LoggingServiceGrpc;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
 import java.util.concurrent.TimeUnit;
-import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 @Configuration
 public class GrpcConfig {
 
-  @Bean
-  public ManagedChannel managedChannel() {
-    return ManagedChannelBuilder
-        .forAddress("localhost", 9090)
-        .usePlaintext()
-        .build();
-  }
+  public LoggingServiceGrpc.LoggingServiceBlockingStub buildStub(String host, int port) {
+    ManagedChannel channel = ManagedChannelBuilder
+            .forAddress(host, port)
+            .usePlaintext()
+            .build();
 
-  @Bean
-  public LoggingServiceGrpc.LoggingServiceBlockingStub loggingStub(ManagedChannel channel) {
+    // Задаємо deadline 5 с. (аналогічно facade-service налаштуванню)
     return LoggingServiceGrpc.newBlockingStub(channel)
-        .withDeadlineAfter(5, TimeUnit.SECONDS);
+            .withDeadlineAfter(20, TimeUnit.SECONDS);
   }
 }
