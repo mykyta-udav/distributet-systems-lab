@@ -27,7 +27,7 @@ public class GrpcLoggingService extends LoggingServiceGrpc.LoggingServiceImplBas
       e.printStackTrace();
     }
 
-    log.info("Отримано повідомлення - ID: {}, Повідомлення: {}",
+    log.info("Received message - ID: {}, Message: {}",
         request.getId(), request.getMessage());
 
     messageStorage.addMessage(

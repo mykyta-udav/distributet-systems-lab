@@ -17,6 +17,6 @@ public class GrpcConfig {
 
     // Задаємо deadline 5 с. (аналогічно facade-service налаштуванню)
     return LoggingServiceGrpc.newBlockingStub(channel)
-            .withDeadlineAfter(20, TimeUnit.SECONDS);
+            .withDeadlineAfter(5, TimeUnit.SECONDS);
   }
 }

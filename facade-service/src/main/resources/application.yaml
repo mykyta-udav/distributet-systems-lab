@@ -21,11 +21,7 @@ resilience4j:
         failureRateThreshold: 50
         waitDurationInOpenState: 10s
         timeoutDuration: 5s
-grpc:
-  server:
-    host: localhost
-    port: 9090
 
-loggingService:
-  grpcPorts: 9090,9091,9092
-  restPorts: 8081,8083,8085
+config:
+  server:
+    url: http://localhost:8888

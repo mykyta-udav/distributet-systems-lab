@@ -1,6 +1,6 @@
 package com.tutorial.facade.service;
 
-import com.tutorial.facade.config.LoggingServiceProperties;
+import com.tutorial.facade.dto.ServiceInfoDto;
 import com.tutorial.facade.grpc.LogRequest;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import lombok.extern.slf4j.Slf4j;
@@ -12,35 +12,36 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Slf4j
 @RestController
 public class FacadeService {
 
-    private final RestTemplate restTemplate;
     private final GrpcLoggingService grpcLoggingService;
-    private final List<Integer> restPorts;
+    private final ConfigServerClient configServerClient;
+    private final RestTemplate restTemplate;
 
-    public FacadeService(RestTemplate restTemplate,
-                         GrpcLoggingService grpcLoggingService,
-                         LoggingServiceProperties props) {
-        this.restTemplate = restTemplate;
+    public FacadeService(GrpcLoggingService grpcLoggingService,
+                         ConfigServerClient configServerClient,
+                         RestTemplate restTemplate) {
         this.grpcLoggingService = grpcLoggingService;
-        this.restPorts = props.getRestPortsAsList();
+        this.configServerClient = configServerClient;
+        this.restTemplate = restTemplate;
     }
-
 
     @PostMapping("/message")
     @CircuitBreaker(name = "logging-service", fallbackMethod = "handleMessageFallback")
     public ResponseEntity<UUID> handleMessage(@RequestBody String message) {
         UUID messageId = UUID.randomUUID();
 
-        LogRequest logRequest = LogRequest.newBuilder()
+        LogRequest request = LogRequest.newBuilder()
                 .setId(messageId.toString())
                 .setMessage(message)
                 .build();
 
-        grpcLoggingService.log(logRequest);
+        grpcLoggingService.log(request);
+
         return ResponseEntity.ok(messageId);
     }
 
@@ -51,22 +52,52 @@ public class FacadeService {
 
     @GetMapping("/messages")
     public String getAllMessages() {
-        // Обираємо випадковий порт для logging-service (REST-запит)
-        int chosenPort = pickRandomRestPort();
-        String loggingUrl = "http://localhost:" + chosenPort + "/messages";
+        // 1) Отримуємо IP/порти logging-service з config-server
+        ServiceInfoDto loggingDto = configServerClient.getServiceInfo("logging-service");
+        // 2) Випадково обираємо один порт:
+        List<Integer> restPorts = parsePorts(loggingDto.getRestPorts());
 
-        // Викликаємо messages-service
-        String messageServiceUrl = "http://localhost:8080/messages";
+        String chosenLoggingUrl = null;
+        if (!restPorts.isEmpty()) {
+            Collections.shuffle(restPorts);
+            int port = restPorts.get(0);
+            chosenLoggingUrl = "http://" + loggingDto.getHost() + ":" + port + "/messages";
+        }
 
-        String loggingMessages = restTemplate.getForObject(loggingUrl, String.class);
-        String staticMessage = restTemplate.getForObject(messageServiceUrl, String.class);
+        // 3) Беремо адресу message-service
+        ServiceInfoDto msgDto = configServerClient.getServiceInfo("message-service");
+        // У нього може бути лише один порт - 8080, але теоретично можна і кілька
+        List<Integer> msgPorts = parsePorts(msgDto.getRestPorts());
+        int msgPort = msgPorts.isEmpty() ? 8080 : msgPorts.get(0); // умовно перший
+        String messageServiceUrl = "http://" + msgDto.getHost() + ":" + msgPort + "/messages";
+
+        // 4) Викликаємо обидва (якщо loggingUrl не null)
+        String loggingMessages = "";
+        if (chosenLoggingUrl != null) {
+            try {
+                loggingMessages = restTemplate.getForObject(chosenLoggingUrl, String.class);
+            } catch (Exception e) {
+                loggingMessages = "Неможливо отримати повідомлення від logging-service: " + e.getMessage();
+            }
+        }
+
+        String staticMessage = "";
+        try {
+            staticMessage = restTemplate.getForObject(messageServiceUrl, String.class);
+        } catch (Exception e) {
+            staticMessage = "Неможливо отримати повідомлення від message-service: " + e.getMessage();
+        }
 
         return loggingMessages + "\n" + staticMessage;
     }
 
-    private int pickRandomRestPort() {
-        List<Integer> copy = new ArrayList<>(restPorts);
-        Collections.shuffle(copy, new Random());
-        return copy.getFirst();
+    private List<Integer> parsePorts(String str) {
+        if (str == null || str.isEmpty()) {
+            return Collections.emptyList();
+        }
+        return Arrays.stream(str.split(","))
+                .map(String::trim)
+                .map(Integer::valueOf)
+                .collect(Collectors.toList());
     }
 }

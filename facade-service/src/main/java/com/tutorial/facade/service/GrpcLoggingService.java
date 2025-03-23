@@ -1,59 +1,62 @@
 package com.tutorial.facade.service;
 
 import com.tutorial.facade.config.GrpcConfig;
-import com.tutorial.facade.config.LoggingServiceProperties;
+import com.tutorial.facade.dto.ServiceInfoDto;
 import com.tutorial.facade.grpc.LogRequest;
 import com.tutorial.facade.grpc.LogResponse;
 import com.tutorial.facade.grpc.LoggingServiceGrpc;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Random;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 public class GrpcLoggingService {
 
   private final GrpcConfig grpcConfig;
-  private final List<Integer> grpcPorts;
+  private final ConfigServerClient configServerClient;
 
-  public GrpcLoggingService(GrpcConfig grpcConfig,
-                            LoggingServiceProperties props) {
+  public GrpcLoggingService(GrpcConfig grpcConfig, ConfigServerClient configServerClient) {
     this.grpcConfig = grpcConfig;
-    this.grpcPorts = props.getGrpcPortsAsList();
+    this.configServerClient = configServerClient;
   }
 
-  /**
-   * Викликає один із екземплярів logging-service випадковим чином.
-   */
   public void log(LogRequest request) {
-    List<Integer> portsShuffled = shufflePorts();
+    // 1) Отримуємо з config-server інформацію про logging-service
+    ServiceInfoDto dto = configServerClient.getServiceInfo("logging-service");
+    String host = dto.getHost();
+    List<Integer> grpcPorts = parsePorts(dto.getGrpcPorts());
 
-    // Перебираємо порти у випадковому порядку, поки не вдасться виклик
+    // 2) Перемішуємо список портів, пробуємо викликати по черзі
+    List<Integer> shuffled = new ArrayList<>(grpcPorts);
+    Collections.shuffle(shuffled, new Random());
+
     RuntimeException lastEx = null;
-    for (Integer port : portsShuffled) {
+    for (Integer port : shuffled) {
       try {
         LoggingServiceGrpc.LoggingServiceBlockingStub stub =
-                grpcConfig.buildStub("localhost", port);
+                grpcConfig.buildStub(host, port);
         LogResponse response = stub.log(request);
         if (!response.getSuccess()) {
           throw new RuntimeException("Помилка при логуванні повідомлення");
         }
-        return; // Якщо успішно - завершуємо метод
-      } catch (RuntimeException ex) {
-        lastEx = ex;
+        return; // успішний виклик
+      } catch (RuntimeException e) {
+        lastEx = e;
       }
     }
-    // Якщо всі спроби не вдалися
-    throw lastEx != null
+    throw (lastEx != null)
             ? new RuntimeException("Не вдалось викликати жоден із logging-service gRPC портів: " + lastEx.getMessage())
-            : new RuntimeException("Невідома помилка при виклику log(...)");
+            : new RuntimeException("Невідома помилка при виклику gRPC log(...)");
   }
 
-  private List<Integer> shufflePorts() {
-    List<Integer> copy = new ArrayList<>(grpcPorts);
-    Collections.shuffle(copy, new Random());
-    return copy;
+  private List<Integer> parsePorts(String portsStr) {
+    if (portsStr == null || portsStr.isEmpty()) {
+      return Collections.emptyList();
+    }
+    return Arrays.stream(portsStr.split(","))
+            .map(String::trim)
+            .map(Integer::valueOf)
+            .collect(Collectors.toList());
   }
 }
