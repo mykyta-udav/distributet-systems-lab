@@ -21,12 +21,6 @@ public class GrpcLoggingService extends LoggingServiceGrpc.LoggingServiceImplBas
 
   @Override
   public void log(LogRequest request, StreamObserver<LogResponse> responseObserver) {
-    try {
-      Thread.sleep(16000);
-    } catch (InterruptedException e) {
-      e.printStackTrace();
-    }
-
     log.info("Received message - ID: {}, Message: {}",
         request.getId(), request.getMessage());
 

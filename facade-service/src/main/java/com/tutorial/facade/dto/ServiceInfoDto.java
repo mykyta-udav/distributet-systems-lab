@@ -2,9 +2,11 @@ package com.tutorial.facade.dto;
 
 import lombok.Data;
 
+import java.util.List;
+
 @Data
 public class ServiceInfoDto {
     private String host;
-    private String grpcPorts;
-    private String restPorts;
+    private List<Integer> grpcPorts;
+    private List<Integer> restPorts;
 }

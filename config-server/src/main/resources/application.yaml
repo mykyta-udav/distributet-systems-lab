@@ -9,9 +9,16 @@ services:
   map:
     logging-service:
       host: localhost
-      grpcPorts: 9090,9091,9092
-      restPorts: 8081,8083,8085
+      grpcPorts:
+        - 9090
+        - 9091
+        - 9092
+      restPorts:
+        - 8081
+        - 8083
+        - 8085
 
     message-service:
       host: localhost
-      restPorts: 8080
+      restPorts:
+        - 8080
